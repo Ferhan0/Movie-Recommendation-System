@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Environment variables
+.env
+server/.env
+client/.env
+
+# Build files
+client/build/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+ml-service/__pycache__/
+ml-service/*.pyc
+ml-service/venv/
