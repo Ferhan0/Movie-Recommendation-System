@@ -6,7 +6,7 @@ const { protect } = require('../middleware/auth');
 
 router.get('/', async (req, res) => {
   try {
-    const movies = await Movie.find().limit(50);
+    const movies = await Movie.find().limit(200);
     res.json(movies);
   } catch (error) {
     res.status(500).json({ message: error.message });
