@@ -1,0 +1,29 @@
+================================================================================
+PERFORMANCE METRICS REPORT
+Movie Recommendation System
+================================================================================
+
+1. ACCURACY METRICS
+--------------------------------------------------------------------------------
+RMSE (Root Mean Squared Error): 1.0046990576838168
+MAE (Mean Absolute Error):      0.7687371248318121
+
+2. RANKING METRICS
+--------------------------------------------------------------------------------
+Precision@10: 0.6201639344262295
+Recall@10:    0.6631176677005689
+F1-Score:      0.6409219318771096
+
+3. BEYOND-ACCURACY METRICS
+--------------------------------------------------------------------------------
+Coverage:  52.781769657154584
+Diversity: 1.0
+Novelty:   N/A
+
+4. INTERPRETATION
+--------------------------------------------------------------------------------
+• Lower RMSE/MAE = Better prediction accuracy
+• Higher Precision/Recall/F1 = Better ranking quality
+• Higher Coverage = More movies recommended
+• Higher Diversity = Less repetitive recommendations
+• Higher Novelty = More long-tail recommendations
