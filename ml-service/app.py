@@ -8,6 +8,9 @@ from temporal_analysis import TemporalAnalyzer
 import pickle
 import os
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
 app = Flask(__name__)
 CORS(app)
 
@@ -18,6 +21,36 @@ movies_df = pd.read_csv('data/ml-latest-small/movies.csv')
 
 # Initialize Temporal Analyzer
 temporal_analyzer = TemporalAnalyzer(ratings_df)
+
+# Load or create TF-IDF matrix
+print("Creating Content-Based model...")
+movies_df['genres'] = movies_df['genres'].fillna('')
+tfidf = TfidfVectorizer(stop_words='english')
+tfidf_matrix = tfidf.fit_transform(movies_df['genres'])
+cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+
+# Movie ID to index mapping
+movie_indices = pd.Series(movies_df.index, index=movies_df['movieId']).to_dict()
+index_to_movieId = pd.Series(movies_df['movieId'].values, index=movies_df.index).to_dict()
+
+print("✅ Content-Based model ready!")
+
+# Create user-item matrix for collaborative filtering
+print("Creating Collaborative Filtering model...")
+user_item_matrix = ratings_df.pivot_table(
+    index='userId',
+    columns='movieId', 
+    values='rating'
+).fillna(0)
+
+user_similarity = cosine_similarity(user_item_matrix)
+user_similarity_df = pd.DataFrame(
+    user_similarity,
+    index=user_item_matrix.index,
+    columns=user_item_matrix.index
+)
+
+print("✅ Collaborative Filtering model ready!")
 
 print("✅ Flask API Ready!")
 
@@ -139,6 +172,7 @@ def get_user_temporal_weights(user_id):
         }), 500
 
 @app.route('/api/temporal/report', methods=['GET'])
+
 def generate_temporal_report():
     """Generate comprehensive temporal analysis report"""
     try:
@@ -154,6 +188,305 @@ def generate_temporal_report():
                 'file': report_file
             }
         })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/recommend/content-based/<int:movie_id>', methods=['GET'])
+def content_based_recommendations(movie_id):
+    """
+    Get content-based recommendations for a movie
+    """
+    try:
+        n_recommendations = request.args.get('limit', default=10, type=int)
+        
+        if movie_id not in movie_indices:
+            return jsonify({
+                'success': False,
+                'error': 'Movie not found'
+            }), 404
+        
+        # Get movie index
+        idx = movie_indices[movie_id]
+        
+        # Get similarity scores
+        sim_scores = list(enumerate(cosine_sim[idx]))
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+        sim_scores = sim_scores[1:n_recommendations+1]
+        
+        # Get movie IDs
+        movie_ids = [index_to_movieId[i[0]] for i in sim_scores]
+        
+        # Get movie details
+        recommended_movies = movies_df[movies_df['movieId'].isin(movie_ids)]
+        recommendations = []
+        
+        for _, movie in recommended_movies.iterrows():
+            recommendations.append({
+                'movieId': int(movie['movieId']),
+                'title': movie['title'],
+                'genres': movie['genres'],
+                'similarity_score': float(sim_scores[len(recommendations)][1])
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'source_movie_id': movie_id,
+                'recommendations': recommendations,
+                'method': 'content-based',
+                'count': len(recommendations)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/recommend/collaborative/<int:user_id>', methods=['GET'])
+def collaborative_recommendations(user_id):
+    """
+    Get collaborative filtering recommendations for a user
+    """
+    try:
+        n_recommendations = request.args.get('limit', default=10, type=int)
+        
+        if user_id not in user_similarity_df.index:
+            return jsonify({
+                'success': False,
+                'error': 'User not found'
+            }), 404
+        
+        # Get similar users
+        similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:21]
+        
+        # Get movies rated by similar users
+        similar_user_ratings = ratings_df[
+            ratings_df['userId'].isin(similar_users.index)
+        ]
+        
+        # Get movies user hasn't rated
+        user_rated_movies = ratings_df[ratings_df['userId'] == user_id]['movieId'].values
+        
+        # Calculate weighted scores
+        movie_scores = {}
+        for _, row in similar_user_ratings.iterrows():
+            if row['movieId'] not in user_rated_movies:
+                similarity = similar_users.get(row['userId'], 0)
+                if row['movieId'] not in movie_scores:
+                    movie_scores[row['movieId']] = {
+                        'total_score': 0,
+                        'total_weight': 0
+                    }
+                movie_scores[row['movieId']]['total_score'] += row['rating'] * similarity
+                movie_scores[row['movieId']]['total_weight'] += similarity
+        
+        # Calculate average weighted scores
+        for movie_id in movie_scores:
+            if movie_scores[movie_id]['total_weight'] > 0:
+                movie_scores[movie_id]['avg_score'] = (
+                    movie_scores[movie_id]['total_score'] / 
+                    movie_scores[movie_id]['total_weight']
+                )
+            else:
+                movie_scores[movie_id]['avg_score'] = 0
+        
+        # Sort by score
+        sorted_movies = sorted(
+            movie_scores.items(),
+            key=lambda x: x[1]['avg_score'],
+            reverse=True
+        )[:n_recommendations]
+        
+        # Get movie details
+        recommendations = []
+        for movie_id, scores in sorted_movies:
+            movie = movies_df[movies_df['movieId'] == movie_id].iloc[0]
+            recommendations.append({
+                'movieId': int(movie_id),
+                'title': movie['title'],
+                'genres': movie['genres'],
+                'predicted_rating': float(scores['avg_score'])
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'user_id': user_id,
+                'recommendations': recommendations,
+                'method': 'collaborative-filtering',
+                'count': len(recommendations)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/recommend/hybrid/<int:user_id>', methods=['GET'])
+def hybrid_recommendations(user_id):
+    """
+    Get hybrid recommendations
+    """
+    try:
+        n_recommendations = request.args.get('limit', default=10, type=int)
+        cb_weight = request.args.get('cb_weight', default=0.6, type=float)
+        cf_weight = 1 - cb_weight
+        
+        user_ratings = ratings_df[ratings_df['userId'] == user_id].sort_values(
+            'timestamp', 
+            ascending=False
+        ).head(5)
+        
+        if len(user_ratings) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'User has no rating history'
+            }), 404
+        
+        cb_recommendations = {}
+        for _, rating in user_ratings.iterrows():
+            movie_id = rating['movieId']
+            if movie_id in movie_indices:
+                idx = movie_indices[movie_id]
+                sim_scores = list(enumerate(cosine_sim[idx]))
+                sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+                
+                for i, score in sim_scores[1:n_recommendations*2]:
+                    rec_movie_id = index_to_movieId[i]
+                    if rec_movie_id not in cb_recommendations:
+                        cb_recommendations[rec_movie_id] = 0
+                    cb_recommendations[rec_movie_id] += score * rating['rating']
+        
+        if cb_recommendations:
+            max_cb = max(cb_recommendations.values())
+            for movie_id in cb_recommendations:
+                cb_recommendations[movie_id] /= max_cb
+        
+        cf_recommendations = {}
+        if user_id in user_similarity_df.index:
+            similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:21]
+            similar_user_ratings = ratings_df[
+                ratings_df['userId'].isin(similar_users.index)
+            ]
+            
+            user_rated_movies = ratings_df[ratings_df['userId'] == user_id]['movieId'].values
+            
+            for _, row in similar_user_ratings.iterrows():
+                if row['movieId'] not in user_rated_movies:
+                    similarity = similar_users.get(row['userId'], 0)
+                    if row['movieId'] not in cf_recommendations:
+                        cf_recommendations[row['movieId']] = {
+                            'score': 0,
+                            'weight': 0
+                        }
+                    cf_recommendations[row['movieId']]['score'] += row['rating'] * similarity
+                    cf_recommendations[row['movieId']]['weight'] += similarity
+            
+            max_cf = 0
+            for movie_id in cf_recommendations:
+                if cf_recommendations[movie_id]['weight'] > 0:
+                    cf_recommendations[movie_id] = (
+                        cf_recommendations[movie_id]['score'] / 
+                        cf_recommendations[movie_id]['weight']
+                    )
+                    if cf_recommendations[movie_id] > max_cf:
+                        max_cf = cf_recommendations[movie_id]
+                else:
+                    cf_recommendations[movie_id] = 0
+            
+            if max_cf > 0:
+                for movie_id in cf_recommendations:
+                    cf_recommendations[movie_id] /= max_cf
+        
+        hybrid_scores = {}
+        all_movies = set(list(cb_recommendations.keys()) + list(cf_recommendations.keys()))
+        
+        for movie_id in all_movies:
+            cb_score = cb_recommendations.get(movie_id, 0)
+            cf_score = cf_recommendations.get(movie_id, 0)
+            hybrid_scores[movie_id] = cb_weight * cb_score + cf_weight * cf_score
+        
+        sorted_movies = sorted(
+            hybrid_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:n_recommendations]
+        
+        recommendations = []
+        for movie_id, score in sorted_movies:
+            movie = movies_df[movies_df['movieId'] == movie_id].iloc[0]
+            recommendations.append({
+                'movieId': int(movie_id),
+                'title': movie['title'],
+                'genres': movie['genres'],
+                'hybrid_score': float(score)
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'user_id': user_id,
+                'recommendations': recommendations,
+                'method': 'hybrid',
+                'count': len(recommendations)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/movies/search', methods=['GET'])
+def search_movies():
+    """
+    Search movies by title or genre
+    """
+    try:
+        query = request.args.get('q', default='', type=str)
+        limit = request.args.get('limit', default=20, type=int)
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query parameter required'
+            }), 400
+        
+        results = movies_df[
+            movies_df['title'].str.contains(query, case=False, na=False) |
+            movies_df['genres'].str.contains(query, case=False, na=False)
+        ].head(limit)
+        
+        movies = []
+        for _, movie in results.iterrows():
+            movie_ratings = ratings_df[ratings_df['movieId'] == movie['movieId']]
+            avg_rating = movie_ratings['rating'].mean() if len(movie_ratings) > 0 else 0
+            
+            movies.append({
+                'movieId': int(movie['movieId']),
+                'title': movie['title'],
+                'genres': movie['genres'],
+                'avgRating': float(avg_rating) if avg_rating > 0 else None,
+                'ratingCount': len(movie_ratings)
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'query': query,
+                'results': movies,
+                'count': len(movies)
+            }
+        })
+        
     except Exception as e:
         return jsonify({
             'success': False,
