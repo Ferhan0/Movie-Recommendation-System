@@ -4,8 +4,10 @@ import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import MovieList from './pages/MovieList';
-import { AuthProvider } from './context/AuthContext';
 import MovieDetail from './pages/MovieDetail';
+import TemporalDashboard from './pages/TemporalDashboard';
+import { AuthProvider } from './context/AuthContext';
+import Recommendations from './pages/Recommendations';
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
               <Route path="/register" element={<Register />} />
               <Route path="/movies" element={<MovieList />} />
               <Route path="/movies/:id" element={<MovieDetail />} />
+              <Route path="/temporal-analysis" element={<TemporalDashboard />} />
+              <Route path="/recommendations" element={<Recommendations />} />
             </Routes>
           </div>
         </div>

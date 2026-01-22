@@ -15,10 +15,17 @@ const Navbar = () => {
     <nav style={styles.nav}>
       <div style={styles.container}>
         <Link to="/movies" style={styles.logo}>
-           Movie Recommendations
+          🎬 Movie Recommendations
         </Link>
         
         <div style={styles.links}>
+          {user && (
+            <>
+              <Link to="/movies" style={styles.link}>Movies</Link>
+              <Link to="/recommendations" style={styles.link}>🎯 Recommendations</Link>
+              <Link to="/temporal-analysis" style={styles.link}>📊 Analysis</Link>
+            </>
+          )}
           {user ? (
             <>
               <span style={styles.welcome}>Welcome, {user.name}</span>

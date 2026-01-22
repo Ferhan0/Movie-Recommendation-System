@@ -120,14 +120,42 @@ def get_trending_movies():
         top_n = request.args.get('limit', default=20, type=int)
         trends = temporal_analyzer.detect_popularity_trends(movies_df, top_n=top_n)
         
-        recent_popular = trends['recent_popular'].head(top_n).to_dict('records')
-        rising_stars = trends['rising_stars'].head(top_n).to_dict('records')
+        recent_popular = trends['recent_popular'].head(top_n)
+        rising_stars = trends['rising_stars'].head(top_n)
+        
+        # Add movie titles to recent_popular
+        recent_popular_with_titles = []
+        for _, row in recent_popular.iterrows():
+            movie = movies_df[movies_df['movieId'] == row['movieId']]
+            if len(movie) > 0:
+                recent_popular_with_titles.append({
+                    'movieId': int(row['movieId']),
+                    'title': movie.iloc[0]['title'],
+                    'genres': movie.iloc[0]['genres'],
+                    'avg_rating': float(row['avg_rating']),
+                    'rating_count': int(row['rating_count'])
+                })
+        
+        # Add movie titles to rising_stars
+        rising_stars_with_titles = []
+        for _, row in rising_stars.iterrows():
+            movie = movies_df[movies_df['movieId'] == row['movieId']]
+            if len(movie) > 0:
+                rising_stars_with_titles.append({
+                    'movieId': int(row['movieId']),
+                    'title': movie.iloc[0]['title'],
+                    'genres': movie.iloc[0]['genres'],
+                    'avg_rating': float(row['avg_rating']),
+                    'old_avg_rating': float(row['old_avg_rating']),
+                    'rating_change': float(row['rating_change']),
+                    'rating_count': int(row['rating_count'])
+                })
         
         return jsonify({
             'success': True,
             'data': {
-                'recent_popular': recent_popular,
-                'rising_stars': rising_stars
+                'recent_popular': recent_popular_with_titles,
+                'rising_stars': rising_stars_with_titles
             }
         })
     except Exception as e:
@@ -484,6 +512,99 @@ def search_movies():
                 'query': query,
                 'results': movies,
                 'count': len(movies)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/movies', methods=['GET'])
+def get_all_movies():
+    """
+    Get all movies with pagination
+    """
+    try:
+        page = request.args.get('page', default=1, type=int)
+        limit = request.args.get('limit', default=20, type=int)
+        search = request.args.get('search', default='', type=str)
+        
+        # Filter by search if provided
+        if search:
+            filtered_movies = movies_df[
+                movies_df['title'].str.contains(search, case=False, na=False) |
+                movies_df['genres'].str.contains(search, case=False, na=False)
+            ]
+        else:
+            filtered_movies = movies_df
+        
+        # Pagination
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_movies = filtered_movies.iloc[start_idx:end_idx]
+        
+        # Prepare response
+        movies = []
+        for _, movie in paginated_movies.iterrows():
+            # Get average rating
+            movie_ratings = ratings_df[ratings_df['movieId'] == movie['movieId']]
+            avg_rating = movie_ratings['rating'].mean() if len(movie_ratings) > 0 else 0
+            
+            movies.append({
+                'movieId': int(movie['movieId']),
+                'title': movie['title'],
+                'genres': movie['genres'].split('|') if movie['genres'] else [],
+                'averageRating': float(avg_rating) if avg_rating > 0 else None,
+                'ratingCount': len(movie_ratings)
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'movies': movies,
+                'page': page,
+                'limit': limit,
+                'total': len(filtered_movies),
+                'totalPages': (len(filtered_movies) + limit - 1) // limit
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/movies/<int:movie_id>', methods=['GET'])
+def get_movie_by_id(movie_id):
+    """
+    Get movie details by ID
+    """
+    try:
+        movie = movies_df[movies_df['movieId'] == movie_id]
+        
+        if len(movie) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'Movie not found'
+            }), 404
+        
+        movie = movie.iloc[0]
+        
+        # Get ratings
+        movie_ratings = ratings_df[ratings_df['movieId'] == movie_id]
+        avg_rating = movie_ratings['rating'].mean() if len(movie_ratings) > 0 else 0
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'movieId': int(movie['movieId']),
+                'title': movie['title'],
+                'genres': movie['genres'].split('|') if movie['genres'] else [],
+                'averageRating': float(avg_rating) if avg_rating > 0 else None,
+                'ratingCount': len(movie_ratings)
             }
         })
         
