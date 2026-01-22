@@ -10,6 +10,9 @@ const Recommendations = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedMovieId, setSelectedMovieId] = useState(1); // For content-based
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchingMovies, setSearchingMovies] = useState(false);
 
   const fetchRecommendations = async (type) => {
   setLoading(true);
@@ -17,8 +20,8 @@ const Recommendations = () => {
   
   try {
     let url;
-    // Use hardcoded ID if user.id is undefined
-    const userId = user?.id || 1; // Fallback to 1
+    // Use hardcoded ID if user._id is undefined
+    const userId = user?._id || 1; // Fallback to 1
     
     console.log('User ID:', userId); // Debug
     
@@ -50,6 +53,32 @@ const Recommendations = () => {
 
   const handleGetRecommendations = () => {
     fetchRecommendations(activeTab);
+  };
+
+    const handleMovieSearch = async (query) => {
+    setSearchQuery(query);
+    
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setSearchingMovies(true);
+    try {
+      const response = await axios.get(
+        `http://localhost:5000/api/movies/search?q=${query}&limit=10`
+      );
+      setSearchResults(response.data.data.results);
+    } catch (err) {
+      console.error('Search error:', err);
+    }
+    setSearchingMovies(false);
+  };
+
+  const handleMovieSelect = (movie) => {
+    setSelectedMovieId(movie.movieId);
+    setSearchQuery(movie.title);
+    setSearchResults([]);
   };
 
   return (
@@ -132,20 +161,55 @@ const Recommendations = () => {
       {/* Input for Content-Based */}
       {activeTab === 'content-based' && (
         <div className="input-section">
-          <label htmlFor="movieId">Enter Movie ID to find similar movies:</label>
-          <div className="input-group">
-            <input
-              type="number"
-              id="movieId"
-              value={selectedMovieId}
-              onChange={(e) => setSelectedMovieId(e.target.value)}
-              placeholder="Movie ID (e.g., 1 for Toy Story)"
-            />
-            <button onClick={handleGetRecommendations} className="btn-recommend">
-              Get Recommendations
-            </button>
+          <label htmlFor="movieSearch">Search for a movie to find similar ones:</label>
+          <div className="search-container">
+            <div className="input-group">
+              <input
+                type="text"
+                id="movieSearch"
+                value={searchQuery}
+                onChange={(e) => handleMovieSearch(e.target.value)}
+                placeholder="Type movie name (e.g., Toy Story, Matrix...)"
+                autoComplete="off"
+              />
+              <button 
+                onClick={handleGetRecommendations} 
+                className="btn-recommend"
+                disabled={!selectedMovieId}
+              >
+                Get Recommendations
+              </button>
+            </div>
+            
+            {/* Search Results Dropdown */}
+            {searchResults.length > 0 && (
+              <div className="search-results">
+                {searchResults.map((movie) => (
+                  <div
+                    key={movie.movieId}
+                    className="search-result-item"
+                    onClick={() => handleMovieSelect(movie)}
+                  >
+                    <div className="result-title">{movie.title}</div>
+                    <div className="result-genres">{movie.genres}</div>
+                    {movie.avgRating && (
+                      <div className="result-rating">⭐ {movie.avgRating.toFixed(1)}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {searchingMovies && (
+              <div className="searching">Searching...</div>
+            )}
           </div>
-          <p className="hint">💡 Popular IDs: 1 (Toy Story), 318 (Shawshank), 296 (Pulp Fiction)</p>
+          
+          {selectedMovieId && (
+            <p className="selected-movie">
+              ✓ Selected: <strong>{searchQuery}</strong>
+            </p>
+          )}
         </div>
       )}
 

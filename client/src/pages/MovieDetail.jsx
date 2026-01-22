@@ -23,7 +23,7 @@ const MovieDetail = () => {
 
   const fetchMovie = async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/movies/${id}`);
+      const res = await axios.get(`http://localhost:5001/api/movies/${id}`);
       setMovie(res.data);
     } catch (err) {
       setError('Failed to load movie');
@@ -40,17 +40,29 @@ const MovieDetail = () => {
     }
 
     try {
-      await axios.post('http://localhost:5000/api/movies/rating', {
-        movieId: id,
-        rating: value
-      });
+      // Token'ı localStorage'dan al
+      const token = localStorage.getItem('token');
+      
+      await axios.post(
+        'http://localhost:5001/api/movies/rating', 
+        {
+          movieId: id,
+          rating: value
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
       
       setRating(value);
       setUserRating(value);
       setRatingMessage('Rating submitted successfully!');
       setTimeout(() => setRatingMessage(''), 3000);
     } catch (err) {
-      setRatingMessage('Failed to submit rating');
+      console.error('Rating error:', err.response?.data);
+      setRatingMessage(err.response?.data?.message || 'Failed to submit rating');
     }
   };
 

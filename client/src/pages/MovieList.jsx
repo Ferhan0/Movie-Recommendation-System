@@ -16,11 +16,16 @@ const MovieList = () => {
 
   useEffect(() => {
     // Arama filtresi
+    if (!Array.isArray(movies)) {
+      setFilteredMovies([]);
+      return;
+    }
+    
     if (searchTerm.trim() === '') {
       setFilteredMovies(movies);
     } else {
       const filtered = movies.filter(movie =>
-        movie.title.toLowerCase().includes(searchTerm.toLowerCase())
+        movie.title?.toLowerCase().includes(searchTerm.toLowerCase())
       );
       setFilteredMovies(filtered);
     }
@@ -28,11 +33,20 @@ const MovieList = () => {
 
   const fetchMovies = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/movies');
-      setMovies(res.data);
-      setFilteredMovies(res.data);
+      const res = await axios.get('http://localhost:5001/api/movies?page=1');
+      
+      console.log('Response:', res.data); // Debug
+      
+      // TMDB response direkt array dönüyor
+      const moviesData = Array.isArray(res.data) ? res.data : [];
+      
+      setMovies(moviesData);
+      setFilteredMovies(moviesData);
     } catch (err) {
+      console.error('Fetch error:', err);
       setError('Failed to load movies');
+      setMovies([]);
+      setFilteredMovies([]);
     } finally {
       setLoading(false);
     }
