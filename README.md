@@ -111,7 +111,7 @@ A sophisticated web-based movie recommendation platform powered by machine learn
 
 ### 1️⃣ Clone Repository
 ```bash
-git clone https://github.com/yourusername/Movie-Recommendation-System.git
+git clone https://github.com/Ferhan0/Movie-Recommendation-System.git
 cd Movie-Recommendation-System
 ```
 
@@ -239,39 +239,6 @@ GET /api/ratings/user/:userId
 - **MovieLens 100K Dataset** - Rating data
 - **TMDB API** - Movie metadata
 
-## 📁 Project Structure
-```
-Movie-Recommendation-System/
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── components/    # Reusable components
-│   │   ├── pages/        # Page components
-│   │   │   ├── TemporalDashboard.jsx
-│   │   │   ├── Recommendations.jsx
-│   │   │   ├── PerformanceMetrics.jsx
-│   │   │   └── ...
-│   │   ├── context/      # React context
-│   │   └── App.js
-│   └── package.json
-│
-├── server/                # Node.js backend
-│   ├── models/           # MongoDB models
-│   ├── routes/           # API routes
-│   ├── middleware/       # Auth middleware
-│   ├── server.js
-│   └── package.json
-│
-├── ml-service/           # Flask ML service
-│   ├── data/            # MovieLens dataset
-│   ├── app.py           # Flask API
-│   ├── temporal_analysis.py
-│   ├── performance_metrics.py
-│   ├── evaluate_recommendations.py
-│   └── requirements.txt
-│
-└── README.md
-```
-
 ## 📊 Dataset Information
 
 ### MovieLens 100K Dataset
@@ -307,10 +274,8 @@ Dr. Furkan Gözükara - Mersin University
 ## 👨‍💻 Author
 
 **Ferhan Akdağ**
-- Student ID: 22220030055
 - University: Mersin University
 - Department: Computer Engineering
-- Email: ferhanakdag@mersin.edu.tr
 
 ## 📄 License
 
