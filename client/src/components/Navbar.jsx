@@ -24,6 +24,7 @@ const Navbar = () => {
               <Link to="/movies" style={styles.link}>Movies</Link>
               <Link to="/recommendations" style={styles.link}>🎯 Recommendations</Link>
               <Link to="/temporal-analysis" style={styles.link}>📊 Analysis</Link>
+              <Link to="/performance" style={styles.link}>📈 Metrics</Link>
             </>
           )}
           {user ? (

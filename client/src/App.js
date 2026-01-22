@@ -8,6 +8,7 @@ import MovieDetail from './pages/MovieDetail';
 import TemporalDashboard from './pages/TemporalDashboard';
 import { AuthProvider } from './context/AuthContext';
 import Recommendations from './pages/Recommendations';
+import PerformanceMetrics from './pages/PerformanceMetrics';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
               <Route path="/movies/:id" element={<MovieDetail />} />
               <Route path="/temporal-analysis" element={<TemporalDashboard />} />
               <Route path="/recommendations" element={<Recommendations />} />
+              <Route path="/performance" element={<PerformanceMetrics />} />
             </Routes>
           </div>
         </div>
