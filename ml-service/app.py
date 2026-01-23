@@ -8,11 +8,22 @@ from temporal_analysis import TemporalAnalyzer
 import pickle
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
+TMDB_API_KEY = os.getenv('TMDB_API_KEY')
+
+print(f"🔑 TMDB API Key loaded: {'✅' if TMDB_API_KEY else '❌'}")
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:3000"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # Load data
 print("Loading data...")
@@ -609,6 +620,108 @@ def get_movie_by_id(movie_id):
         })
         
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/movies/enriched', methods=['GET'])
+def get_enriched_movies():
+    """
+    Get MovieLens movies with TMDB metadata
+    """
+    try:
+        import json
+        
+        # Pagination parametreleri
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        search = request.args.get('search', '').lower()
+        
+        print(f"📽️ Enriched movies request - Page: {page}, Limit: {limit}, Search: '{search}'")
+        
+        # Load enriched movies
+        enriched_path = 'data/enriched_movies.json'
+        
+        if os.path.exists(enriched_path):
+            with open(enriched_path, 'r', encoding='utf-8') as f:
+                enriched_movies = json.load(f)
+            
+            print(f"✅ Loaded {len(enriched_movies)} enriched movies from file")
+            
+            # Filter by search
+            if search:
+                filtered = [
+                    m for m in enriched_movies 
+                    if search in m['title'].lower() or search in m['genres'].lower()
+                ]
+                print(f"🔍 Filtered to {len(filtered)} movies matching '{search}'")
+            else:
+                filtered = enriched_movies
+            
+            # Paginate
+            start = (page - 1) * limit
+            end = start + limit
+            paginated = filtered[start:end]
+            
+            print(f"📄 Returning {len(paginated)} movies (page {page})")
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'movies': paginated,
+                    'total': len(filtered),
+                    'page': page,
+                    'totalPages': (len(filtered) + limit - 1) // limit
+                }
+            })
+        else:
+            print(f"⚠️ Enriched movies file not found at: {enriched_path}")
+            
+            # Fallback: Return basic MovieLens data with TMDB-compatible structure
+            movies_with_titles = []
+            for _, movie in movies_df.iterrows():
+                movies_with_titles.append({
+                    'movieId': int(movie['movieId']),
+                    'title': movie['title'],
+                    'genres': movie['genres'],
+                    'tmdbId': None,
+                    'posterPath': None,
+                    'backdropPath': None,
+                    'overview': '',
+                    'voteAverage': 0,
+                    'releaseDate': ''
+                })
+            
+            # Filter by search
+            if search:
+                filtered = [
+                    m for m in movies_with_titles
+                    if search in m['title'].lower() or search in m['genres'].lower()
+                ]
+            else:
+                filtered = movies_with_titles
+            
+            # Paginate
+            start = (page - 1) * limit
+            end = start + limit
+            paginated = filtered[start:end]
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'movies': paginated,
+                    'total': len(filtered),
+                    'page': page,
+                    'totalPages': (len(filtered) + limit - 1) // limit,
+                    'note': 'Using basic MovieLens data. Run enrichment script for TMDB metadata.'
+                }
+            })
+    
+    except Exception as e:
+        print(f"❌ Enriched movies error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)

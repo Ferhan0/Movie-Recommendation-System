@@ -8,56 +8,74 @@ const { protect } = require('../middleware/auth');
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// Get popular movies from TMDB (fetch multiple pages to get ~200 movies)
-router.get('/', async (req, res) => {
+// ✅ 1. MovieLens endpoint (SPESİFİK route önce!)
+router.get('/movielens', async (req, res) => {
   try {
-    const requestedPage = req.query.page || 1;
-    const pagesToFetch = 10; // Fetch 10 pages to get ~200 movies (20 per page)
-    const allMovies = [];
-    const seenIds = new Set(); // Track unique movie IDs to avoid duplicates
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const search = req.query.search || '';
     
-    // Fetch multiple pages from TMDB
-    for (let page = 1; page <= pagesToFetch; page++) {
-      try {
-        const response = await axios.get(
-          `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=${page}`
-        );
-        
-        // Format TMDB response to match our frontend and filter duplicates
-        const movies = response.data.results
-          .filter(movie => !seenIds.has(movie.id)) // Filter duplicates
-          .map(movie => {
-            seenIds.add(movie.id); // Mark as seen
-            return {
-              _id: movie.id,
-              tmdbId: movie.id,
-              title: movie.title,
-              overview: movie.overview,
-              posterPath: movie.poster_path,
-              voteAverage: movie.vote_average,
-              releaseDate: movie.release_date,
-              genres: movie.genre_ids
-            };
-          });
-        
-        allMovies.push(...movies);
-      } catch (pageError) {
-        console.error(`Error fetching page ${page}:`, pageError.message);
-        // Continue with other pages even if one fails
+    console.log('📽️ MovieLens Request - Page:', page, 'Limit:', limit);
+    
+    // ML Service'ten enriched movies al
+    try {
+      const response = await axios.get(
+        `http://localhost:5000/api/movies/enriched?page=${page}&limit=${limit}&search=${search}`
+      );
+      
+      if (response.data.success) {
+        console.log('✅ MovieLens movies fetched:', response.data.data.movies.length);
+        return res.json(response.data.data);
       }
+    } catch (mlError) {
+      console.log('⚠️ ML Service error, trying fallback:', mlError.message);
     }
     
-    // Limit to 200 unique movies as before
-    const limitedMovies = allMovies.slice(0, 200);
+    // Fallback: Direkt dosyadan oku
+    const fs = require('fs');
+    const path = require('path');
+    const enrichedPath = path.join(__dirname, '../../ml-service/data/enriched_movies.json');
     
-    res.json(limitedMovies);
+    console.log('🔄 Trying fallback - Reading from:', enrichedPath);
+    
+    if (fs.existsSync(enrichedPath)) {
+      const enrichedMovies = JSON.parse(fs.readFileSync(enrichedPath, 'utf8'));
+      
+      // Filter by search if provided
+      let filtered = enrichedMovies;
+      if (search) {
+        const searchLower = search.toLowerCase();
+        filtered = enrichedMovies.filter(m => 
+          m.title.toLowerCase().includes(searchLower) ||
+          m.genres.toLowerCase().includes(searchLower)
+        );
+      }
+      
+      // Pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedMovies = filtered.slice(startIndex, endIndex);
+      
+      console.log('✅ Fallback success:', paginatedMovies.length, 'movies');
+      
+      return res.json({
+        movies: paginatedMovies,
+        total: filtered.length,
+        page: page,
+        totalPages: Math.ceil(filtered.length / limit)
+      });
+    }
+    
+    console.log('❌ File not found:', enrichedPath);
+    res.status(500).json({ message: 'Enriched movies file not found' });
+    
   } catch (error) {
-    console.error('TMDB Error:', error.message);
+    console.error('❌ MovieLens Error:', error.message);
     res.status(500).json({ message: error.message });
   }
 });
 
-// Search movies from TMDB
+// ✅ 2. Search endpoint (SPESİFİK route)
 router.get('/search', async (req, res) => {
   try {
     const query = req.query.q;
@@ -86,44 +104,143 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// Get movie by ID from TMDB
-router.get('/:id', async (req, res) => {
+// ✅ 3. Mapping endpoint (SPESİFİK route)
+router.get('/mapping/:movieLensId', async (req, res) => {
   try {
-    const response = await axios.get(
-      `${TMDB_BASE_URL}/movie/${req.params.id}?api_key=${TMDB_API_KEY}&language=en-US`
-    );
+    const fs = require('fs');
+    const path = require('path');
+    const enrichedPath = path.join(__dirname, '../../ml-service/data/enriched_movies.json');
     
-    const movie = {
-      _id: response.data.id,
-      tmdbId: response.data.id,
-      title: response.data.title,
-      overview: response.data.overview,
-      posterPath: response.data.poster_path,
-      backdropPath: response.data.backdrop_path,
-      voteAverage: response.data.vote_average,
-      voteCount: response.data.vote_count,
-      releaseDate: response.data.release_date,
-      runtime: response.data.runtime,
-      genres: response.data.genres,
-      productionCompanies: response.data.production_companies
-    };
+    if (fs.existsSync(enrichedPath)) {
+      const enrichedMovies = JSON.parse(fs.readFileSync(enrichedPath, 'utf8'));
+      const movie = enrichedMovies.find(
+        m => m.movieId === parseInt(req.params.movieLensId)
+      );
+      
+      if (movie) {
+        return res.json(movie);
+      }
+    }
     
-    res.json(movie);
-  } catch (error) {
-    console.error('TMDB Movie Error:', error.message);
     res.status(404).json({ message: 'Movie not found' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-// Rating endpoints (keep as is for MongoDB ratings)
+// ✅ 4. Get popular movies from TMDB
+router.get('/', async (req, res) => {
+  try {
+    const requestedPage = req.query.page || 1;
+    const pagesToFetch = 10;
+    const allMovies = [];
+    const seenIds = new Set();
+    
+    for (let page = 1; page <= pagesToFetch; page++) {
+      try {
+        const response = await axios.get(
+          `${TMDB_BASE_URL}/movie/popular?api_key=${TMDB_API_KEY}&language=en-US&page=${page}`
+        );
+        
+        const movies = response.data.results
+          .filter(movie => !seenIds.has(movie.id))
+          .map(movie => {
+            seenIds.add(movie.id);
+            return {
+              _id: movie.id,
+              tmdbId: movie.id,
+              title: movie.title,
+              overview: movie.overview,
+              posterPath: movie.poster_path,
+              voteAverage: movie.vote_average,
+              releaseDate: movie.release_date,
+              genres: movie.genre_ids
+            };
+          });
+        
+        allMovies.push(...movies);
+      } catch (pageError) {
+        console.error(`Error fetching page ${page}:`, pageError.message);
+      }
+    }
+    
+    const limitedMovies = allMovies.slice(0, 200);
+    res.json(limitedMovies);
+  } catch (error) {
+    console.error('TMDB Error:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ✅ 5. Get single movie details - MovieLens ID (GENEL route en sona!)
+router.get('/:id', async (req, res) => {
+  try {
+    const movieId = parseInt(req.params.id);
+    
+    if (isNaN(movieId)) {
+      console.log('❌ Invalid movie ID:', req.params.id);
+      return res.status(400).json({ message: 'Invalid movie ID' });
+    }
+    
+    console.log('📽️ Movie Detail Request: MovieLens ID', movieId);
+    
+    const fs = require('fs');
+    const path = require('path');
+    const enrichedPath = path.join(__dirname, '../../ml-service/data/enriched_movies.json');
+    
+    if (fs.existsSync(enrichedPath)) {
+      const enrichedMovies = JSON.parse(fs.readFileSync(enrichedPath, 'utf8'));
+      const movie = enrichedMovies.find(m => m.movieId === movieId);
+      
+      if (movie) {
+        console.log('✅ Found in enriched_movies.json:', movie.title);
+        
+        if (movie.tmdbId) {
+          try {
+            const tmdbDetails = await axios.get(
+              `https://api.themoviedb.org/3/movie/${movie.tmdbId}`,
+              { params: { api_key: TMDB_API_KEY } }
+            );
+            
+            console.log('✅ TMDB details fetched for TMDB ID:', movie.tmdbId);
+            
+            const fullMovie = {
+              ...movie,
+              runtime: tmdbDetails.data.runtime,
+              budget: tmdbDetails.data.budget,
+              revenue: tmdbDetails.data.revenue,
+              tagline: tmdbDetails.data.tagline,
+              homepage: tmdbDetails.data.homepage,
+              productionCompanies: tmdbDetails.data.production_companies,
+            };
+            
+            return res.json(fullMovie);
+          } catch (tmdbError) {
+            console.log('⚠️ TMDB details fetch failed, using enriched data only');
+            return res.json(movie);
+          }
+        }
+        
+        return res.json(movie);
+      }
+    }
+    
+    console.log('❌ Movie not found');
+    res.status(404).json({ message: 'Movie not found' });
+    
+  } catch (error) {
+    console.error('❌ Movie Detail Error:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ✅ 6. Rating endpoints
 router.post('/rating', protect, async (req, res) => {
   try {
     const { movieId, rating } = req.body;
     
-    // movieId is TMDB ID, we need to find or create the Movie in MongoDB
     let movie = await Movie.findOne({ tmdbId: movieId });
     
-    // If movie doesn't exist in MongoDB, fetch from TMDB and create it
     if (!movie) {
       try {
         const tmdbResponse = await axios.get(
@@ -144,7 +261,6 @@ router.post('/rating', protect, async (req, res) => {
       }
     }
     
-    // Now use the MongoDB movie _id for rating
     let userRating = await Rating.findOne({ 
       user: req.user._id, 
       movie: movie._id 
@@ -172,6 +288,26 @@ router.get('/ratings/user/:userId', async (req, res) => {
     const ratings = await Rating.find({ user: req.params.userId })
       .populate('movie');
     res.json(ratings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get ML Service compatible user ID
+router.get('/user/ml-id', protect, async (req, res) => {
+  try {
+    // MongoDB user'ının _id'sinden sayısal bir ID üret
+    const objectId = req.user._id.toString();
+    
+    // ObjectId'nin son 8 karakterini hex'ten integer'a çevir
+    const mlUserId = parseInt(objectId.slice(-8), 16) % 610 + 1; // 1-610 arası
+    
+    console.log(`📊 User ${objectId} mapped to ML User ID: ${mlUserId}`);
+    
+    res.json({
+      mongoUserId: objectId,
+      mlUserId: mlUserId
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

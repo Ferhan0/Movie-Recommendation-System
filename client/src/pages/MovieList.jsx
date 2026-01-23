@@ -25,7 +25,8 @@ const MovieList = () => {
       setFilteredMovies(movies);
     } else {
       const filtered = movies.filter(movie =>
-        movie.title?.toLowerCase().includes(searchTerm.toLowerCase())
+        movie.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        movie.genres?.toLowerCase().includes(searchTerm.toLowerCase())
       );
       setFilteredMovies(filtered);
     }
@@ -33,12 +34,12 @@ const MovieList = () => {
 
   const fetchMovies = async () => {
     try {
-      const res = await axios.get('http://localhost:5001/api/movies?page=1');
+      // MovieLens filmlerini çek (TMDB metadata ile)
+      const res = await axios.get('http://localhost:5001/api/movies/movielens?page=1&limit=200');
       
-      console.log('Response:', res.data); // Debug
+      console.log('MovieLens Response:', res.data);
       
-      // TMDB response direkt array dönüyor
-      const moviesData = Array.isArray(res.data) ? res.data : [];
+      const moviesData = res.data.movies || [];
       
       setMovies(moviesData);
       setFilteredMovies(moviesData);
@@ -57,7 +58,7 @@ const MovieList = () => {
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Popular Movies</h1>
+      <h1 style={styles.title}>MovieLens Collection (TMDB Enhanced)</h1>
       
       {/* Arama Kutusu */}
       <div style={styles.searchContainer}>
@@ -77,7 +78,8 @@ const MovieList = () => {
 
       {/* Sonuç Sayısı */}
       <p style={styles.resultCount}>
-        {filteredMovies.length} movie{filteredMovies.length !== 1 ? 's' : ''} found
+        {filteredMovies.length} movie{filteredMovies.length !== 1 ? 's' : ''} found 
+        {movies.length > 0 && ` (${movies.length} total in catalog)`}
       </p>
 
       {/* Film Grid */}
@@ -85,23 +87,44 @@ const MovieList = () => {
         {filteredMovies.length > 0 ? (
           filteredMovies.map((movie) => (
             <div 
-              key={movie._id} 
+              key={movie.movieId}
               style={styles.card}
-              onClick={() => navigate(`/movies/${movie._id}`)}
+              onClick={() => navigate(`/movies/${movie.movieId}`)}
             >
-              {movie.posterPath && (
+              {movie.posterPath ? (
                 <img
                   src={`https://image.tmdb.org/t/p/w300${movie.posterPath}`}
                   alt={movie.title}
                   style={styles.poster}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
                 />
-              )}
+              ) : null}
+              
+              <div 
+                style={{
+                  ...styles.noPoster,
+                  display: movie.posterPath ? 'none' : 'flex'
+                }}
+              >
+                <span style={styles.noPosterText}>{movie.title}</span>
+              </div>
+              
               <div style={styles.info}>
                 <h3 style={styles.movieTitle}>{movie.title}</h3>
-                <p style={styles.rating}>⭐ {movie.voteAverage?.toFixed(1)}</p>
-                <p style={styles.overview}>
-                  {movie.overview?.substring(0, 100)}...
+                {movie.voteAverage > 0 && (
+                  <p style={styles.rating}>⭐ {movie.voteAverage.toFixed(1)}</p>
+                )}
+                <p style={styles.genres}>
+                  {movie.genres?.split('|').slice(0, 3).join(', ')}
                 </p>
+                {movie.overview && (
+                  <p style={styles.overview}>
+                    {movie.overview.substring(0, 100)}...
+                  </p>
+                )}
               </div>
             </div>
           ))
@@ -175,6 +198,21 @@ const styles = {
     height: '375px',
     objectFit: 'cover',
   },
+  noPoster: {
+    width: '100%',
+    height: '375px',
+    backgroundColor: '#f0f0f0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2rem',
+  },
+  noPosterText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: '1rem',
+    fontWeight: '600',
+  },
   info: {
     padding: '1rem',
   },
@@ -188,9 +226,16 @@ const styles = {
     fontWeight: 'bold',
     marginBottom: '0.5rem',
   },
+  genres: {
+    fontSize: '0.85rem',
+    color: '#888',
+    marginBottom: '0.5rem',
+    fontStyle: 'italic',
+  },
   overview: {
     fontSize: '0.9rem',
     color: '#666',
+    lineHeight: '1.4',
   },
   loading: {
     textAlign: 'center',

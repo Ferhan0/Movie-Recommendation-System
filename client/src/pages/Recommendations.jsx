@@ -20,27 +20,93 @@ const Recommendations = () => {
   
   try {
     let url;
-    // Use hardcoded ID if user._id is undefined
-    const userId = user?._id || 1; // Fallback to 1
+    let userId = null;
     
-    console.log('User ID:', userId); // Debug
+    // Collaborative ve Hybrid için ML-compatible user ID al
+    if ((type === 'collaborative' || type === 'hybrid') && user) {
+      console.log('🔍 Getting ML-compatible user ID...');
+      
+      try {
+        const token = localStorage.getItem('token');
+        const userIdResponse = await axios.get(
+          'http://localhost:5001/api/movies/user/ml-id',
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+        userId = userIdResponse.data.mlUserId;
+        console.log('✅ ML User ID:', userId);
+      } catch (err) {
+        console.error('❌ User ID mapping error:', err);
+        setError('Failed to get user ID. Please try logging in again.');
+        setLoading(false);
+        return;
+      }
+    }
     
+    // URL oluştur
     if (type === 'content-based') {
+      if (!selectedMovieId) {
+        setError('Please select a movie first');
+        setLoading(false);
+        return;
+      }
       url = `http://localhost:5000/api/recommend/content-based/${selectedMovieId}?limit=10`;
     } else if (type === 'collaborative') {
+      if (!user) {
+        setError('Please login to get collaborative recommendations');
+        setLoading(false);
+        return;
+      }
+      if (!userId) {
+        setError('Failed to map user ID');
+        setLoading(false);
+        return;
+      }
       url = `http://localhost:5000/api/recommend/collaborative/${userId}?limit=10`;
     } else if (type === 'hybrid') {
+      if (!user) {
+        setError('Please login to get hybrid recommendations');
+        setLoading(false);
+        return;
+      }
+      if (!userId) {
+        setError('Failed to map user ID');
+        setLoading(false);
+        return;
+      }
       url = `http://localhost:5000/api/recommend/hybrid/${userId}?limit=10`;
     }
     
-    console.log('Fetching from:', url); // Debug
+    console.log('📡 Fetching from:', url);
     
     const response = await axios.get(url);
-    setRecommendations(response.data.data);
+    
+    if (response.data.success) {
+      setRecommendations(response.data.data);
+      console.log('✅ Recommendations loaded:', response.data.data.recommendations?.length || 'N/A');
+    } else {
+      setError(response.data.error || 'Failed to get recommendations');
+    }
+    
     setLoading(false);
+    
   } catch (err) {
-    console.error('Full error:', err);
-    setError(err.response?.data?.error || err.message || 'Failed to fetch recommendations');
+    console.error('❌ Full error:', err);
+    
+    if (err.response) {
+      // Server responded with error
+      const errorMsg = err.response.data?.error || err.response.data?.message || 'Failed to fetch recommendations';
+      setError(errorMsg);
+      console.log('📛 Server error:', errorMsg);
+    } else if (err.request) {
+      // Request made but no response
+      setError('Cannot connect to ML Service. Please ensure it is running on port 5000.');
+    } else {
+      // Something else
+      setError('An error occurred: ' + err.message);
+    }
+    
     setLoading(false);
   }
 };
@@ -56,24 +122,31 @@ const Recommendations = () => {
   };
 
     const handleMovieSearch = async (query) => {
-    setSearchQuery(query);
-    
-    if (query.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-    
-    setSearchingMovies(true);
-    try {
-      const response = await axios.get(
-        `http://localhost:5000/api/movies/search?q=${query}&limit=10`
-      );
-      setSearchResults(response.data.data.results);
-    } catch (err) {
-      console.error('Search error:', err);
-    }
-    setSearchingMovies(false);
-  };
+      setSearchQuery(query);
+      
+      if (query.length < 2) {
+        setSearchResults([]);
+        return;
+      }
+      
+      setSearchingMovies(true);
+      try {
+        // ML Service'ten MovieLens filmlerinde ara
+        const response = await axios.get(
+          `http://localhost:5000/api/movies/search?q=${query}&limit=10`
+        );
+        
+        if (response.data.success && response.data.data.results) {
+          setSearchResults(response.data.data.results);
+        } else {
+          setSearchResults([]);
+        }
+      } catch (err) {
+        console.error('Search error:', err);
+        setSearchResults([]);
+      }
+      setSearchingMovies(false);
+    };
 
   const handleMovieSelect = (movie) => {
     setSelectedMovieId(movie.movieId);

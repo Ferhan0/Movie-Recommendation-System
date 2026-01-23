@@ -1,0 +1,48 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Environment variables - ALL .env files
+.env
+*.env
+server/.env
+client/.env
+ml-service/.env
+
+# Build files
+client/build/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+ml-service/__pycache__/
+ml-service/*.pyc
+ml-service/venv/
+ml-service/.venv/
+__pycache__/
+*.pyc
+
+# Data files (optional - büyük dosyalar için)
+# ml-service/data/enriched_movies.json
+
+# Test files
+*.test.js
+coverage/
